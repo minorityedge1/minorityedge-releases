@@ -68,10 +68,10 @@ jobs:
       - name: Validate .env
         shell: bash
         run: |
-          rg '^NEXT_PUBLIC_API_URL=' .env >/dev/null || (echo "Missing NEXT_PUBLIC_API_URL" && exit 1)
-          rg '^NEXT_PUBLIC_API_VERSION=' .env >/dev/null || (echo "Missing NEXT_PUBLIC_API_VERSION" && exit 1)
+          grep '^NEXT_PUBLIC_API_URL=' .env >/dev/null || (echo "Missing NEXT_PUBLIC_API_URL" && exit 1)
+          grep '^NEXT_PUBLIC_API_VERSION=' .env >/dev/null || (echo "Missing NEXT_PUBLIC_API_VERSION" && exit 1)
           echo "ENV keys found:"
-          rg '^(NEXT_PUBLIC_API_URL|NEXT_PUBLIC_API_VERSION|NEXT_PUBLIC_TELEGRAM_BOT_NAME)=' .env || true
+          grep '^(NEXT_PUBLIC_API_URL|NEXT_PUBLIC_API_VERSION|NEXT_PUBLIC_TELEGRAM_BOT_NAME)=' .env || true
 
       - name: Normalize version for latest channel
         if: steps.channel.outputs.channel == 'latest'
