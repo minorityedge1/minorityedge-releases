@@ -6,21 +6,24 @@ on:
   workflow_dispatch:
     inputs:
       source_repo:
-        description: 'Source repository'
+        description: Source repository
         required: true
-        default: 'minorityedge1/crypto_web'
+        default: minorityedge1/crypto_web
       ref:
-        description: 'Branch or commit'
+        description: Branch or commit
         required: true
-        default: 'main'
+        default: main
       channel:
-        description: 'Release channel'
+        description: Release channel
         required: true
-        default: 'latest'
+        default: latest
         type: choice
         options:
           - latest
           - dev
+
+permissions:
+  contents: write
 
 jobs:
   build-and-publish:
@@ -37,25 +40,37 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: "20"
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
 
       - name: Set release channel
         id: channel
+        shell: powershell
         run: |
           if ("${{ github.event_name }}" -eq "workflow_dispatch") {
-            echo "channel=${{ github.event.inputs.channel }}" >> $env:GITHUB_OUTPUT
-          } elseif ("${{ github.event_name }}" -eq "repository_dispatch") {
-            echo "channel=${{ github.event.client_payload.channel }}" >> $env:GITHUB_OUTPUT
-          } elseif ("${{ github.event.client_payload.ref || github.event.inputs.ref }}" -eq "refs/heads/main") {
-            echo "channel=latest" >> $env:GITHUB_OUTPUT
+            "channel=${{ github.event.inputs.channel }}" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           } else {
-            echo "channel=dev" >> $env:GITHUB_OUTPUT
+            "channel=${{ github.event.client_payload.channel }}" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           }
+
+      - name: Write .env
         shell: powershell
+        run: |
+          if ("${{ steps.channel.outputs.channel }}" -eq "latest") {
+            Set-Content -Path ".env" -Value "${{ vars.ENV_PROD }}" -NoNewline
+          } else {
+            Set-Content -Path ".env" -Value "${{ vars.ENV_DEV }}" -NoNewline
+          }
+
+      - name: Normalize version for latest channel
+        if: steps.channel.outputs.channel == 'latest'
+        shell: powershell
+        run: |
+          $v = node -p "require('./package.json').version.split('-')[0]"
+          npm version $v --no-git-tag-version --allow-same-version
 
       - name: Update version for dev channel
         if: steps.channel.outputs.channel == 'dev'
@@ -66,44 +81,13 @@ jobs:
         env:
           UPDATE_CHANNEL: ${{ steps.channel.outputs.channel }}
 
-      - name: Create channel-specific update files
-        run: |
-          New-Item -ItemType Directory -Force -Path dist
-          if ("${{ steps.channel.outputs.channel }}" -eq "dev") {
-            if (Test-Path "dist/dev.yml") {
-              Write-Output "Found existing dev.yml"
-            } else {
-              Write-Output "Creating dev.yml manually"
-              @"
-          provider: github
-          owner: minorityedge
-          repo: minorityedge-releases
-          updaterCacheDirName: minority-edge-updater
-          "@ | Out-File -FilePath "dist/dev.yml" -Encoding utf8
-            }
-            Write-Output "Created dev.yml"
-            Get-ChildItem dist/*.yml
-          } else {
-            if (Test-Path "dist/latest.yml") {
-              Write-Output "Found existing latest.yml"
-            } else {
-              Write-Output "Creating latest.yml manually"
-              @"
-          provider: github
-          owner: minorityedge
-          repo: minorityedge-releases
-          updaterCacheDirName: minority-edge-updater
-          "@ | Out-File -FilePath "dist/latest.yml" -Encoding utf8
-            }
-            Write-Output "Created latest.yml"
-            Get-ChildItem dist/*.yml
-          }
-        shell: powershell
-
-      - name: Build and Publish Windows to Public Repository
+      - name: Build and Publish Windows
         run: npm run electron:publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           UPDATE_CHANNEL: ${{ steps.channel.outputs.channel }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Show version
+        run: node -p "require('./package.json').version"
