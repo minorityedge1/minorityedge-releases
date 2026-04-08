@@ -6,17 +6,17 @@ on:
   workflow_dispatch:
     inputs:
       source_repo:
-        description: Source repository
+        description: "Source repository"
         required: true
-        default: minorityedge1/crypto_web
+        default: "minorityedge1/crypto_web"
       ref:
-        description: Branch or commit
+        description: "Branch or commit"
         required: true
-        default: main
+        default: "main"
       channel:
-        description: Release channel
+        description: "Release channel"
         required: true
-        default: latest
+        default: "latest"
         type: choice
         options:
           - latest
@@ -56,7 +56,7 @@ jobs:
             "channel=${{ github.event.client_payload.channel }}" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           }
 
-      - name: Write .env
+      - name: Write .env from repository variables
         shell: powershell
         run: |
           if ("${{ steps.channel.outputs.channel }}" -eq "latest") {
@@ -64,6 +64,26 @@ jobs:
           } else {
             Set-Content -Path ".env" -Value "${{ vars.ENV_DEV }}" -NoNewline
           }
+
+      - name: Validate .env
+        shell: powershell
+        run: |
+          $envText = Get-Content -Path ".env" -Raw
+
+          if ($envText -notmatch "(?m)^NEXT_PUBLIC_API_URL=") {
+            Write-Error "Missing NEXT_PUBLIC_API_URL in .env"
+            exit 1
+          }
+
+          if ($envText -notmatch "(?m)^NEXT_PUBLIC_API_VERSION=") {
+            Write-Error "Missing NEXT_PUBLIC_API_VERSION in .env"
+            exit 1
+          }
+
+          Write-Host "ENV keys found:"
+          if ($envText -match "(?m)^NEXT_PUBLIC_API_URL=") { Write-Host " - NEXT_PUBLIC_API_URL" }
+          if ($envText -match "(?m)^NEXT_PUBLIC_API_VERSION=") { Write-Host " - NEXT_PUBLIC_API_VERSION" }
+          if ($envText -match "(?m)^NEXT_PUBLIC_TELEGRAM_BOT_NAME=") { Write-Host " - NEXT_PUBLIC_TELEGRAM_BOT_NAME" }
 
       - name: Normalize version for latest channel
         if: steps.channel.outputs.channel == 'latest'
@@ -75,11 +95,6 @@ jobs:
       - name: Update version for dev channel
         if: steps.channel.outputs.channel == 'dev'
         run: npm version prerelease --preid=dev --no-git-tag-version
-
-      - name: Build Electron app
-        run: npm run build:electron
-        env:
-          UPDATE_CHANNEL: ${{ steps.channel.outputs.channel }}
 
       - name: Build and Publish Windows
         run: npm run electron:publish
